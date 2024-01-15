@@ -11,31 +11,35 @@
 #include <arpa/inet.h>
 #include <time.h>
 #include <dirent.h>
+#include <semaphore.h>
 
-#define  MAX_LOG_SIZE     4
-#define  MAX_LOG_FILES    3
+#define  MAX_LOG_SIZE     10000
+#define  MAX_LOG_FILES    5
  
 void defaultServerConfiguration();
 void updateServerConfiguration();
 int openLog();
 int countLogs();
-void writeLog(int, char*, char*);
+int writeLog(int, char*, char*);
 char* getTime();
 int removeOldestLog(char*);
-void getNewestLog(char*, char[]);
-int checkLogSize();
+void getNewestLog(char*);
+int checkLogSize(char*);
 
 // The directory where the log file is saved and the listening port
 struct ServerConfiguration {
 	char directory[100];
 	int port;
 };
+char currentLogFile[27];
+sem_t semaphore;
 
 int main()
 {
+
 	struct sockaddr_in server_addr, client_addr;
 	int sockfd, newsockfd, clientlen, pid, n;
-	struct ServerConfiguration serverConfig;
+	struct ServerConfiguration serverConfig;			
 
 	// Load default server configuration
 	defaultServerConfiguration(&serverConfig);
@@ -43,12 +47,11 @@ int main()
 	// Update server configuration
 	updateServerConfiguration(&serverConfig);
 
-	// Open the log file or create it if doesn't exist
-	int logFd = openLog(&serverConfig);
-	if (logFd == -1){
-		printf("Error opening/creating the Log file.\n");
-		return 1;
-	}
+	// Initialize semaphore
+    if (sem_init(&semaphore, 1, 1) == -1) {
+        printf("Semaphore initialization failed.\n");
+        return(1);
+    }
 
 	sockfd = socket(AF_INET, SOCK_STREAM, 0);	
 	if(sockfd < 0){
@@ -97,14 +100,24 @@ int main()
 			
 
 		    while ((n = read(newsockfd, buffer, sizeof(buffer))) > 0) {		    	
-				// printf("%s:%d at %s", clientIP, clientPort, getTime());
-				//printf("Message from client: %s\n", buffer); 
-
-				char header[75];  // Adjust the size as needed
+				char header[75];
 				sprintf(header, "%s:%d at %s", clientIP, clientPort, getTime());
+
+				sem_wait(&semaphore);
+
+				// Open the log file or create it if doesn't exist
+				int logFd = openLog(&serverConfig);
+				if (logFd == -1){
+					printf("Error opening/creating the Log file.\n");
+					return 1;
+				}
 
 				// Function to write on Log file
 				writeLog(logFd, header, buffer);
+
+				close(logFd);
+
+				sem_post(&semaphore);
 
 				bzero(buffer, 2048);
 		    }
@@ -117,7 +130,7 @@ int main()
 		close(newsockfd);
 	}
 	close(sockfd);
-	close(logFd);
+	//close(logFd);
 	return 0;
 }
 
@@ -190,8 +203,7 @@ int openLog(struct ServerConfiguration *config){
 	
 	mode_t mode = 0644;
 
-	char fileName[27];
-	char filePath[strlen(config->directory) + strlen(fileName) + 1]; // +1 for the null terminator
+	char filePath[strlen(config->directory) + strlen(currentLogFile) + 1]; // +1 for the null terminator
 	int numberLogs = countLogs(config->directory);	
 	int overThreshold;
 
@@ -202,13 +214,13 @@ int openLog(struct ServerConfiguration *config){
 	if (numberLogs == 0) {
 	    time_t t = time(NULL);
     	struct tm tm_info = *localtime(&t);
-    	strftime(fileName, sizeof(fileName), "%d-%m-%Y-%H-%M-%S.log", &tm_info);
+    	strftime(currentLogFile, sizeof(currentLogFile), "%d-%m-%Y-%H-%M-%S.log", &tm_info);
 
     // If at least one log file exists, get the newest one
 	} else {
-		getNewestLog(config->directory, fileName);
+		getNewestLog(config->directory);
 		strcpy(filePath, config->directory);
-	    strcat(filePath, fileName);
+	    strcat(filePath, currentLogFile);
 			
 		overThreshold = checkLogSize(filePath);
 
@@ -232,13 +244,13 @@ int openLog(struct ServerConfiguration *config){
 
 			time_t t = time(NULL);
 			struct tm tm_info = *localtime(&t);
-			strftime(fileName, sizeof(fileName), "%d-%m-%Y-%H-%M-%S.log", &tm_info);
+			strftime(currentLogFile, sizeof(currentLogFile), "%d-%m-%Y-%H-%M-%S.log", &tm_info);
 		}
 		
 	}	
 
     strcpy(filePath, config->directory);
-    strcat(filePath, fileName);
+    strcat(filePath, currentLogFile);
 
 	int fd = open(filePath, O_WRONLY | O_CREAT, mode);
 
@@ -314,7 +326,11 @@ int removeOldestLog(char* directory){
 }
 
 // Writes to log file
-void writeLog(int fd, char *header, char *buffer){
+int writeLog(int fd, char *header, char *buffer){
+	// Initial file position
+    off_t initialPosition = lseek(fd, (off_t)0, SEEK_CUR);
+
+
 	char combinedData[strlen(header) + strlen(buffer) + 1];
     strcpy(combinedData, header);
     strcat(combinedData, buffer);
@@ -331,11 +347,15 @@ void writeLog(int fd, char *header, char *buffer){
 
     if (bytesWritten == -1) {
     	printf("Error writing to file.\n");
+    	lseek(fd, initialPosition, SEEK_SET);
+    	return -1;
     }
+
+    return (int)(initialPosition / (strlen(header) + strlen(buffer) + 1));
 }
 
-// Updates the 'fileName' variable with the name of the most recent log file
-void getNewestLog(char* directory, char fileName[27]){
+// Updates the 'currentLogFile' variable with the name of the most recent log file
+void getNewestLog(char* directory){
    
     DIR *dir;
     struct dirent *entry;
@@ -350,10 +370,10 @@ void getNewestLog(char* directory, char fileName[27]){
 
 		        struct stat fileStat;
 		        if (stat(filePath, &fileStat) == 0) {
-		        	if (!fileName[0] || difftime(fileStat.st_mtime, newestStat.st_mtime) > 0) {
+		        	if (!currentLogFile[0] || difftime(fileStat.st_mtime, newestStat.st_mtime) > 0) {
 		            	newestStat = fileStat;
-		            	strncpy(fileName, entry->d_name, 27);
-		            	fileName[27] = '\0';
+		            	strncpy(currentLogFile, entry->d_name, 27);
+		            	currentLogFile[27] = '\0';
 
 		        	}   
 		        } else{
@@ -371,49 +391,13 @@ void getNewestLog(char* directory, char fileName[27]){
 
 // If log file size (rows) is over a threshold returns 1, else 0. In case of error -1 
 int checkLogSize(char* logFilePath){
-	int fd = open(logFilePath, O_RDONLY);
-    if (fd == -1) {
-        printf("Error opening file: %s\n", logFilePath);
-        return -1;
-    }
+	FILE *fp = fopen(logFilePath, "a");
+	
+	fseek(fp, 0, SEEK_END);
+	int nrCharacters = ftell(fp);
+	fseek(fp, 0, SEEK_SET);
 
-    off_t fileSize = lseek(fd, 0, SEEK_END);
-    if (fileSize == -1) {
-        printf("Error seeking to end of file\n");
-        close(fd);
-        return -1;
-    }
-
-    // Reset file pointer to the beginning
-    lseek(fd, 0, SEEK_SET);
-
-    char *buffer = (char *)malloc(fileSize);
-    if (!buffer) {
-        printf("Error allocating memory\n");
-        close(fd);
-        return -1;
-    }
-
-    ssize_t bytesRead = read(fd, buffer, fileSize);
-    if (bytesRead == -1) {
-        printf("Error reading file\n");
-        free(buffer);
-        close(fd);
-        return -1;
-    }
-
-    close(fd);
-
-    int rowCounter = 0;
-    for (ssize_t i = 0; i < bytesRead; i++) {
-        if (buffer[i] == '\n') {
-            rowCounter++;
-        }
-    }
-
-    free(buffer);
-
-    return rowCounter >= MAX_LOG_SIZE ? 1 : 0;
+    return nrCharacters >= MAX_LOG_SIZE ? 1 : 0;
 }
 
 // Used to get the time of connection of each client
@@ -426,4 +410,4 @@ char* getTime(){
   	
   	// From struct to string
 	return asctime(timeinfo);
-}
+} 
