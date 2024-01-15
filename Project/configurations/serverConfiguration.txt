@@ -1,2 +1,2 @@
-directory:/
+directory:/home/danux/Desktop/Project_CSaP/logs/
 port:8787

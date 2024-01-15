@@ -10,12 +10,20 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <time.h>
+#include <dirent.h>
 
+#define  MAX_LOG_SIZE     4
+#define  MAX_LOG_FILES    3
+ 
 void defaultServerConfiguration();
 void updateServerConfiguration();
 int openLog();
+int countLogs();
 void writeLog(int, char*, char*);
 char* getTime();
+int removeOldestLog(char*);
+void getNewestLog(char*, char[]);
+int checkLogSize();
 
 // The directory where the log file is saved and the listening port
 struct ServerConfiguration {
@@ -182,21 +190,130 @@ int openLog(struct ServerConfiguration *config){
 	
 	mode_t mode = 0644;
 
-	char fileName[27];  // Adjust the size as needed
-    time_t t = time(NULL);
-    struct tm tm_info = *localtime(&t);
-    strftime(fileName, sizeof(fileName), "%d-%m-%Y-%H-%M-%S.log", &tm_info);
+	char fileName[27];
+	char filePath[strlen(config->directory) + strlen(fileName) + 1]; // +1 for the null terminator
+	int numberLogs = countLogs(config->directory);	
+	int overThreshold;
 
+	if(numberLogs == -1) {
+		return -1;
+	}
+	// If no log file exists, create new log file
+	if (numberLogs == 0) {
+	    time_t t = time(NULL);
+    	struct tm tm_info = *localtime(&t);
+    	strftime(fileName, sizeof(fileName), "%d-%m-%Y-%H-%M-%S.log", &tm_info);
 
-	char filePath[strlen(config->directory) + strlen(fileName) + 2]; // +2 for the path separator and null terminator
+    // If at least one log file exists, get the newest one
+	} else {
+		getNewestLog(config->directory, fileName);
+		strcpy(filePath, config->directory);
+	    strcat(filePath, fileName);
+			
+		overThreshold = checkLogSize(filePath);
+
+		if(overThreshold == -1){
+			printf("Error in checking the threshold.\n");
+			return -1;
+		} 
+
+		// If maximum log file size is exceded
+		if (overThreshold == 1) {	
+		
+			// Clear (reset) filePath
+	    	memset(filePath, 0, sizeof(filePath));	
+
+			if (numberLogs == MAX_LOG_FILES) {				
+				// Remove oldest log file
+				if(removeOldestLog(config->directory) == -1){
+					return -1;
+				}
+			}
+
+			time_t t = time(NULL);
+			struct tm tm_info = *localtime(&t);
+			strftime(fileName, sizeof(fileName), "%d-%m-%Y-%H-%M-%S.log", &tm_info);
+		}
+		
+	}	
+
     strcpy(filePath, config->directory);
     strcat(filePath, fileName);
 
 	int fd = open(filePath, O_WRONLY | O_CREAT, mode);
-    
+
 	return fd;
 }
 
+// Returns number of log files 
+int countLogs(char *directory){
+	int counter = 0;
+    struct dirent *dirent;
+    DIR * dir = opendir(directory);
+
+    if (dir == NULL){
+        printf("Error to open logs directory %s\n",directory);
+        return -1;
+    }	
+
+    while ((dirent = readdir(dir)) != NULL){
+    	 if (dirent->d_type == DT_REG ){ 
+            counter++;
+        }
+    }
+
+    closedir(dir);
+    return(counter);
+}
+
+// Removes oldest log file. Return 1 if successful, -1 if error
+int removeOldestLog(char* directory){
+    char oldestFileName[27];
+    time_t oldestFileTime = 0;
+
+    DIR *dir;
+    struct dirent *entry;
+
+    dir = opendir(directory);
+
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_type == DT_REG) { 
+            char filePath[512];
+            strcpy(filePath, directory);
+            strcat(filePath, entry->d_name);
+
+
+            struct stat fileStat;
+            if (stat(filePath, &fileStat) == 0) {
+                // Check if the current file is older than the current oldest file
+                if (oldestFileTime == 0 || difftime(fileStat.st_mtime, oldestFileTime) < 0) {
+                    oldestFileTime = fileStat.st_mtime;
+                    strcpy(oldestFileName, entry->d_name);
+                }
+            } else {
+                printf("Error getting file status.\n");
+            }
+        }
+    }
+
+    closedir(dir);
+
+    // Remove the oldest file
+    char filePath[512];
+
+	strcpy(filePath, directory);
+    strcat(filePath, oldestFileName);
+
+    if (remove(filePath) == 0) {
+        printf("Oldest file %s removed successfully.\n", oldestFileName);
+        return 1;
+    } else {
+		printf("Error removing oldest file.\n");
+        return -1;
+    }   
+}
+
+// Writes to log file
 void writeLog(int fd, char *header, char *buffer){
 	char combinedData[strlen(header) + strlen(buffer) + 1];
     strcpy(combinedData, header);
@@ -205,12 +322,98 @@ void writeLog(int fd, char *header, char *buffer){
     // TODO: Should  i use fcntl??
 
 
+    // Write at the end of the file
+    lseek(fd, (off_t)0, SEEK_END);
+
     // Write header + message together
-    ssize_t bytesWritten = write(fd, combinedData, strlen(combinedData));
+	ssize_t bytesWritten = write(fd, combinedData, strlen(combinedData));
+
 
     if (bytesWritten == -1) {
     	printf("Error writing to file.\n");
     }
+}
+
+// Updates the 'fileName' variable with the name of the most recent log file
+void getNewestLog(char* directory, char fileName[27]){
+   
+    DIR *dir;
+    struct dirent *entry;
+    struct stat newestStat;
+
+    if ((dir = opendir(directory)) != NULL) {
+	    while ((entry = readdir(dir)) != NULL) {
+	    	if (entry->d_type == DT_REG) {
+		        char filePath[256];
+		        strcpy(filePath, directory);
+		    	strcat(filePath, entry->d_name);
+
+		        struct stat fileStat;
+		        if (stat(filePath, &fileStat) == 0) {
+		        	if (!fileName[0] || difftime(fileStat.st_mtime, newestStat.st_mtime) > 0) {
+		            	newestStat = fileStat;
+		            	strncpy(fileName, entry->d_name, 27);
+		            	fileName[27] = '\0';
+
+		        	}   
+		        } else{
+		        	printf("Error getting file status.\n");
+		        }
+	    	}
+	    }
+	}else  {
+        printf("Error opening directory.\n");
+    
+    }
+
+    closedir(dir);
+}
+
+// If log file size (rows) is over a threshold returns 1, else 0. In case of error -1 
+int checkLogSize(char* logFilePath){
+	int fd = open(logFilePath, O_RDONLY);
+    if (fd == -1) {
+        printf("Error opening file: %s\n", logFilePath);
+        return -1;
+    }
+
+    off_t fileSize = lseek(fd, 0, SEEK_END);
+    if (fileSize == -1) {
+        printf("Error seeking to end of file\n");
+        close(fd);
+        return -1;
+    }
+
+    // Reset file pointer to the beginning
+    lseek(fd, 0, SEEK_SET);
+
+    char *buffer = (char *)malloc(fileSize);
+    if (!buffer) {
+        printf("Error allocating memory\n");
+        close(fd);
+        return -1;
+    }
+
+    ssize_t bytesRead = read(fd, buffer, fileSize);
+    if (bytesRead == -1) {
+        printf("Error reading file\n");
+        free(buffer);
+        close(fd);
+        return -1;
+    }
+
+    close(fd);
+
+    int rowCounter = 0;
+    for (ssize_t i = 0; i < bytesRead; i++) {
+        if (buffer[i] == '\n') {
+            rowCounter++;
+        }
+    }
+
+    free(buffer);
+
+    return rowCounter >= MAX_LOG_SIZE ? 1 : 0;
 }
 
 // Used to get the time of connection of each client
