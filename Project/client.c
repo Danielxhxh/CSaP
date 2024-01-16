@@ -9,7 +9,6 @@
 
 void defaultServerConfiguration();
 void updateServerConfiguration();
-void sendMessageOLD(int);
 void sendMessage(int);
 
 // The hostname and port added from the client are saved here
@@ -18,18 +17,15 @@ struct ServerConfiguration {
 	int port;
 };
 
-int main()
+int main(int argc, char *argv[])
 {
 	struct sockaddr_in server_addr;
 	struct hostent *server;
 	struct ServerConfiguration serverConfig;
 	int sockfd;
 
-	// Load default server configuration
-	defaultServerConfiguration(&serverConfig);
-	
 	// Update server configuration from client input
-	updateServerConfiguration(&serverConfig);
+	updateServerConfiguration(argc, argv, &serverConfig);
 
 	sockfd = socket(AF_INET, SOCK_STREAM, 0);	
 	if(sockfd < 0) {
@@ -59,6 +55,28 @@ int main()
 
 	return 0;
 }
+
+void updateServerConfiguration(int argc, char *argv[], struct ServerConfiguration *config) {
+    if (argc == 1) {
+    	defaultServerConfiguration(config);
+    } else if (argc == 3) {
+    	// Copy argv[1] to config.hostname
+        strncpy(config->hostname, argv[1], sizeof(config->hostname) - 1);
+        config->hostname[sizeof(config->hostname) - 1] = '\0'; 
+
+        // Convert argv[2] to an integer and save it in config.port
+        config->port = atoi(argv[2]);
+    } else {
+    	argc < 3 ? printf("Too little arguments. Hostname and port are required.\n") : printf("Too many arguments. Hostname and port are required.\n"); 
+    	defaultServerConfiguration(config);
+    }
+
+    printf("\n --- Server configuration --- \n");
+	printf("Hostname: %s \t Port: %d\n", config->hostname, config->port);
+	printf(" ---------------------------- \n\n");
+
+}
+
 
 void defaultServerConfiguration(struct ServerConfiguration *config) {
     FILE *file = fopen("configurations/clientConfiguration.txt", "r");
@@ -92,7 +110,7 @@ void defaultServerConfiguration(struct ServerConfiguration *config) {
     printf("Default server configuration loaded.\n");
 }
 
-void updateServerConfiguration(struct ServerConfiguration *config){
+void updateServerConfigurationOLD(struct ServerConfiguration *config){
 	char response[4];
 
 	while(1){
@@ -123,25 +141,6 @@ void updateServerConfiguration(struct ServerConfiguration *config){
 	    printf("\n --- Server configuration --- \n");
 	    printf("Hostname: %s \t Port: %d\n", config->hostname, config->port);
 	    printf(" ---------------------------- \n\n");
-}
-
-void sendMessageOLD(int sockfd){
-	int n;
-	char buffer[256];
-
-	printf("Enter message: ");
-	bzero(buffer, 256);
-	fgets(buffer, 255, stdin);
-	n = write(sockfd, buffer, strlen(buffer));
-	if (n < 0)
-		printf("Error in writing to socket.\n");
-		
-	bzero(buffer, 256);
-	n = read(sockfd, buffer, sizeof(buffer));
-	if (n < 0)
-		printf("Error in reading from socket.\n");
-
-	printf("Message from server: %s\n", buffer); 	
 }
 
 void sendMessage(int sockfd){

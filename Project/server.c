@@ -34,18 +34,16 @@ struct ServerConfiguration {
 char currentLogFile[27];
 sem_t semaphore;
 
-int main()
+int main(int argc, char *argv[])
 {
 
 	struct sockaddr_in server_addr, client_addr;
 	int sockfd, newsockfd, clientlen, pid, n;
 	struct ServerConfiguration serverConfig;			
 
-	// Load default server configuration
-	defaultServerConfiguration(&serverConfig);
+	// Make all the changes of the server configuration
+	updateServerConfiguration(argc, argv, &serverConfig);
 
-	// Update server configuration
-	updateServerConfiguration(&serverConfig);
 
 	// Initialize semaphore
     if (sem_init(&semaphore, 1, 1) == -1) {
@@ -96,30 +94,77 @@ int main()
     		inet_ntop(AF_INET, &client_addr.sin_addr, clientIP, INET_ADDRSTRLEN);
     		clientPort = ntohs(client_addr.sin_port);
 
+    		// Client connected message
+			char connectionMessage[128];
+			sprintf(connectionMessage, "Client [%s:%d] connected. ", clientIP, clientPort);
+
+			sem_wait(&semaphore);
+
+			// Open the log file or create it if doesn't exist
+			int logFd = openLog(&serverConfig);
+			if (logFd == -1){
+				printf("Error opening/creating the Log file.\n");
+				return 1;
+			}
+
+			// Function to write on Log file
+			writeLog(logFd, connectionMessage, NULL);
+
+			close(logFd);
+
+			sem_post(&semaphore);
+					
 			bzero(buffer, 2048);
-			
 
-		    while ((n = read(newsockfd, buffer, sizeof(buffer))) > 0) {		    	
-				char header[75];
-				sprintf(header, "%s:%d at %s", clientIP, clientPort, getTime());
+		    while (1) {		
+		    	n = recv(newsockfd, buffer, sizeof(buffer), 0);    	
+				if(n > 0){
+					char header[77];
+					sprintf(header, "[%s:%d] at %s", clientIP, clientPort, getTime());
 
-				sem_wait(&semaphore);
+					sem_wait(&semaphore);
 
-				// Open the log file or create it if doesn't exist
-				int logFd = openLog(&serverConfig);
-				if (logFd == -1){
-					printf("Error opening/creating the Log file.\n");
-					return 1;
+					// Open the log file or create it if doesn't exist
+					int logFd = openLog(&serverConfig);
+					if (logFd == -1){
+						printf("Error opening/creating the Log file.\n");
+						return 1;
+					}
+
+					// Function to write on Log file
+					writeLog(logFd, header, buffer);
+
+					close(logFd);
+
+					sem_post(&semaphore);
+
+					bzero(buffer, 2048);
+				} else if (n == 0){
+					char disconnectionMessage[128];
+					sprintf(disconnectionMessage, "Client [%s:%d] disconnected. ", clientIP, clientPort);
+
+					sem_wait(&semaphore);
+
+					// Open the log file or create it if doesn't exist
+					int logFd = openLog(&serverConfig);
+					if (logFd == -1){
+						printf("Error opening/creating the Log file.\n");
+						return 1;
+					}
+
+					// Function to write on Log file
+					writeLog(logFd, disconnectionMessage, NULL);
+
+					close(logFd);
+
+					sem_post(&semaphore);
+
+					bzero(buffer, 2048);
+					break;
+				} else if (n < 0){
+					printf("Error in receving data from the client.\n");
 				}
 
-				// Function to write on Log file
-				writeLog(logFd, header, buffer);
-
-				close(logFd);
-
-				sem_post(&semaphore);
-
-				bzero(buffer, 2048);
 		    }
 
 			exit(0);
@@ -130,8 +175,27 @@ int main()
 		close(newsockfd);
 	}
 	close(sockfd);
-	//close(logFd);
 	return 0;
+}
+
+void updateServerConfiguration(int argc, char *argv[], struct ServerConfiguration *config) {
+    if (argc == 1) {
+    	defaultServerConfiguration(config);
+    } else if (argc == 3) {
+    	// Copy argv[1] to config.directory
+        strncpy(config->directory, argv[1], sizeof(config->directory) - 1);
+        config->directory[sizeof(config->directory) - 1] = '\0'; 
+
+        // Convert argv[2] to an integer and save it in config.port
+        config->port = atoi(argv[2]);
+    } else {
+    	argc < 3 ? printf("Too little arguments. Directory and port are required.\n") : printf("Too many arguments.Directory and port are required.\n"); 
+    	defaultServerConfiguration(config);
+    }
+
+    printf("\n --- Server configuration --- \n");
+	printf("Directory: %s \t Port: %d\n", config->directory, config->port);
+	printf(" ---------------------------- \n\n");
 }
 
 void defaultServerConfiguration(struct ServerConfiguration *config) {
@@ -166,7 +230,7 @@ void defaultServerConfiguration(struct ServerConfiguration *config) {
     printf("Default server configuration loaded.\n");
 }
 
-void updateServerConfiguration(struct ServerConfiguration *config){
+void updateServerConfigurationOLD(struct ServerConfiguration *config){
 	char response[4];
 
 	while(1){
@@ -331,27 +395,38 @@ int writeLog(int fd, char *header, char *buffer){
     off_t initialPosition = lseek(fd, (off_t)0, SEEK_CUR);
 
 
-	char combinedData[strlen(header) + strlen(buffer) + 1];
-    strcpy(combinedData, header);
-    strcat(combinedData, buffer);
-
-    // TODO: Should  i use fcntl??
-
-
     // Write at the end of the file
     lseek(fd, (off_t)0, SEEK_END);
 
-    // Write header + message together
-	ssize_t bytesWritten = write(fd, combinedData, strlen(combinedData));
+    // Used when client connects/disconnects
+    if (buffer == NULL) {
+        ssize_t headerBytesWritten = write(fd, header, strlen(header));
+        write(fd, "\n", 1);
+
+        if (headerBytesWritten == -1) {
+            printf("Error writing to file.\n");
+            lseek(fd, initialPosition, SEEK_SET);
+            return -1;
+        }
+
+        return (int)(initialPosition / strlen(header));
+    } else {
+		char combinedData[strlen(header) + strlen("Message: ") + strlen(buffer) + 1];
+		sprintf(combinedData, "%sMessage: %s", header, buffer);
 
 
-    if (bytesWritten == -1) {
-    	printf("Error writing to file.\n");
-    	lseek(fd, initialPosition, SEEK_SET);
-    	return -1;
+	    // Write header + message together
+		ssize_t bytesWritten = write(fd, combinedData, strlen(combinedData));
+
+
+	    if (bytesWritten == -1) {
+	    	printf("Error writing to file.\n");
+	    	lseek(fd, initialPosition, SEEK_SET);
+	    	return -1;
+	    }
+
+	    return (int)(initialPosition / (strlen(header) + strlen(buffer) + 1));
     }
-
-    return (int)(initialPosition / (strlen(header) + strlen(buffer) + 1));
 }
 
 // Updates the 'currentLogFile' variable with the name of the most recent log file
