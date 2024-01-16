@@ -48,13 +48,13 @@ int main(int argc, char *argv[])
 	// Initialize semaphore
     if (sem_init(&semaphore, 1, 1) == -1) {
         printf("Semaphore initialization failed.\n");
-        return(1);
+        return -1;
     }
 
 	sockfd = socket(AF_INET, SOCK_STREAM, 0);	
 	if(sockfd < 0){
 		printf("Error in creating the socket.\n");
-		return 1;
+		return -1;
 	}
 
 	// Initializes the memory of server_addr to zero, clearing sensitive data.
@@ -67,7 +67,7 @@ int main(int argc, char *argv[])
 	// Bind an address to a socket
 	if (bind(sockfd, (struct sockaddr *) &server_addr, sizeof(server_addr)) == -1){
 		printf("Error on binding.\n");
-		return 1;
+		return -1;
 	}
 
 	listen(sockfd, SOMAXCONN); // max allowed value by the system
@@ -104,7 +104,7 @@ int main(int argc, char *argv[])
 			int logFd = openLog(&serverConfig);
 			if (logFd == -1){
 				printf("Error opening/creating the Log file.\n");
-				return 1;
+				return -1;
 			}
 
 			// Function to write on Log file
@@ -128,7 +128,7 @@ int main(int argc, char *argv[])
 					int logFd = openLog(&serverConfig);
 					if (logFd == -1){
 						printf("Error opening/creating the Log file.\n");
-						return 1;
+						return -1;
 					}
 
 					// Function to write on Log file
@@ -149,7 +149,7 @@ int main(int argc, char *argv[])
 					int logFd = openLog(&serverConfig);
 					if (logFd == -1){
 						printf("Error opening/creating the Log file.\n");
-						return 1;
+						return -1;
 					}
 
 					// Function to write on Log file
