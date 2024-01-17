@@ -24,7 +24,7 @@ int main(int argc, char *argv[])
 	struct ServerConfiguration serverConfig;
 	int sockfd;
 
-	// Update server configuration from client input
+	// Update server configuration from client input or load default one
 	updateServerConfiguration(argc, argv, &serverConfig);
 
 	sockfd = socket(AF_INET, SOCK_STREAM, 0);	
@@ -56,6 +56,7 @@ int main(int argc, char *argv[])
 	return 0;
 }
 
+// Reads and loads server configuration from inputs arguments
 void updateServerConfiguration(int argc, char *argv[], struct ServerConfiguration *config) {
     if (argc == 1) {
     	defaultServerConfiguration(config);
@@ -77,7 +78,7 @@ void updateServerConfiguration(int argc, char *argv[], struct ServerConfiguratio
 
 }
 
-
+// Reads and loads default server configuration 
 void defaultServerConfiguration(struct ServerConfiguration *config) {
     FILE *file = fopen("configurations/clientConfiguration.txt", "r");
     if (file == NULL) {
@@ -87,7 +88,6 @@ void defaultServerConfiguration(struct ServerConfiguration *config) {
 
     char line[256];
     
-
     while (fgets(line, sizeof(line), file) != NULL) {
         char *token = strtok(line, ":");
         if (token != NULL) {
@@ -110,6 +110,7 @@ void defaultServerConfiguration(struct ServerConfiguration *config) {
     printf("Default server configuration loaded.\n");
 }
 
+// DEPRECATED!!
 void updateServerConfigurationOLD(struct ServerConfiguration *config){
 	char response[4];
 
@@ -143,6 +144,7 @@ void updateServerConfigurationOLD(struct ServerConfiguration *config){
 	    printf(" ---------------------------- \n\n");
 }
 
+// Sends multiple messages 
 void sendMessage(int sockfd){
 	char buffer[2048];
 

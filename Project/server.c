@@ -34,6 +34,7 @@ struct ServerConfiguration {
 char currentLogFile[27];
 sem_t semaphore;
 
+
 int main(int argc, char *argv[])
 {
 
@@ -178,6 +179,7 @@ int main(int argc, char *argv[])
 	return 0;
 }
 
+// Reads and loads server configuration from inputs arguments
 void updateServerConfiguration(int argc, char *argv[], struct ServerConfiguration *config) {
     if (argc == 1) {
     	defaultServerConfiguration(config);
@@ -198,6 +200,7 @@ void updateServerConfiguration(int argc, char *argv[], struct ServerConfiguratio
 	printf(" ---------------------------- \n\n");
 }
 
+// Reads and loads default server configuration
 void defaultServerConfiguration(struct ServerConfiguration *config) {
     FILE *file = fopen("configurations/serverConfiguration.txt", "r");
     if (file == NULL) {
@@ -230,6 +233,7 @@ void defaultServerConfiguration(struct ServerConfiguration *config) {
     printf("Default server configuration loaded.\n");
 }
 
+// DEPRECATED!!
 void updateServerConfigurationOLD(struct ServerConfiguration *config){
 	char response[4];
 
@@ -263,6 +267,8 @@ void updateServerConfigurationOLD(struct ServerConfiguration *config){
 	    printf(" ---------------------------- \n\n");
 }
 
+
+// Handles all the logic about log files opening
 int openLog(struct ServerConfiguration *config){
 	
 	mode_t mode = 0644;
