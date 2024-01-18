@@ -1,0 +1,8 @@
+Client [127.0.0.1:48022] connected. 
+[127.0.0.1:48022] at Thu Jan 18 09:31:10 2024
+Message: From client 1
+Client [127.0.0.1:48022] disconnected. 
+Client [127.0.0.1:56142] connected. 
+[127.0.0.1:56142] at Thu Jan 18 09:31:13 2024
+Message: From client 2
+Client [127.0.0.1:56142] disconnected. 

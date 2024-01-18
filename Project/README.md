@@ -12,11 +12,21 @@ This README.md serves as a guide, providing step-by-step instructions for the in
 ├── Makefile
 ├── README.md
 ├── logs
-│   └── 'log files'
+│   └── 'generated log files'
 └── configurations
     ├── serverConfiguration.txt
     └── clientConfiguration.txt
 ```
+
+- server.c: Source code file for the server.
+- client.c: Source code file for the client.
+- Makefile: Script for building and compiling the code.
+- README.md: Documentation file.
+- logs: Directory containing generated log files.
+  - 'generated log files'
+- configurations:
+- serverConfiguration.txt: Server configuration file.
+- clientConfiguration.txt: Client configuration file.
 
 ### 1. Installation
 
@@ -65,4 +75,4 @@ To run a simple test, just type the command:
 ./Test.sh
 ```
 
-This will lunch the server with two clients, which send one message each to the server. The message will be written in the log file and all the running programms will be closed.
+This will lunch the server with two clients, which will send one message each to the server. The messages will be written in the log file and all the running programms will be closed.

@@ -110,40 +110,6 @@ void defaultServerConfiguration(struct ServerConfiguration *config) {
     printf("Default server configuration loaded.\n");
 }
 
-// DEPRECATED!!
-void updateServerConfigurationOLD(struct ServerConfiguration *config){
-	char response[4];
-
-	while(1){
-		printf("Do you want to connect to another server? (yes/no): ");	
-		scanf("%3s", response);
-
-		getchar();
-	
-		if (strcmp(response, "yes") == 0) {
-			// For custom connection
-		    printf("Enter the hostname of the server: ");
-		    scanf("%s", config->hostname);
-		    
-		    printf("Enter the port of the server: ");
-		    scanf("%d", &config->port);
-	
-		    // Used to consume the new line character from the above scanf
-		    getchar();
-
-		    break;
-		} else if(strcmp(response, "no") == 0){
-			// Don't do anything
-			break;
-		} else {
-			printf("Please enter valid response. \n");
-		}
-	}
-	    printf("\n --- Server configuration --- \n");
-	    printf("Hostname: %s \t Port: %d\n", config->hostname, config->port);
-	    printf(" ---------------------------- \n\n");
-}
-
 // Sends multiple messages 
 void sendMessage(int sockfd){
 	char buffer[2048];

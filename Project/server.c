@@ -12,12 +12,16 @@
 #include <time.h>
 #include <dirent.h>
 #include <semaphore.h>
+#include <signal.h>
+#include <sys/wait.h>
 
-#define  MAX_LOG_SIZE     10000
+#define  MAX_LOG_SIZE     1000
 #define  MAX_LOG_FILES    5
  
+void signalHandler(int);
 void defaultServerConfiguration();
 void updateServerConfiguration();
+void accessLog();
 int openLog();
 int countLogs();
 int writeLog(int, char*, char*);
@@ -32,14 +36,13 @@ struct ServerConfiguration {
 	int port;
 };
 char currentLogFile[27];
+int sockfd;
 sem_t semaphore;
+pid_t fatherPid;
 
-
-int main(int argc, char *argv[])
-{
-
+int main(int argc, char *argv[]){
 	struct sockaddr_in server_addr, client_addr;
-	int sockfd, newsockfd, clientlen, pid, n;
+	int newsockfd, clientlen, pid, n;
 	struct ServerConfiguration serverConfig;			
 
 	// Make all the changes of the server configuration
@@ -76,6 +79,11 @@ int main(int argc, char *argv[])
 
 	clientlen = sizeof(client_addr);
 
+	// Setup a function handler to close everything in case of Ctrl+C 
+	signal(SIGINT, signalHandler);
+    printf("Press CTRL+C to quit the server.\n");
+
+
 	// While loop to listen forever and accept multiple connections
 	while(1){
 		newsockfd = accept(sockfd, (struct sockaddr*)&client_addr, &clientlen);
@@ -99,21 +107,7 @@ int main(int argc, char *argv[])
 			char connectionMessage[128];
 			sprintf(connectionMessage, "Client [%s:%d] connected. ", clientIP, clientPort);
 
-			sem_wait(&semaphore);
-
-			// Open the log file or create it if doesn't exist
-			int logFd = openLog(&serverConfig);
-			if (logFd == -1){
-				printf("Error opening/creating the Log file.\n");
-				return -1;
-			}
-
-			// Function to write on Log file
-			writeLog(logFd, connectionMessage, NULL);
-
-			close(logFd);
-
-			sem_post(&semaphore);
+			accessLog(connectionMessage, NULL, &serverConfig);
 					
 			bzero(buffer, 2048);
 
@@ -123,42 +117,14 @@ int main(int argc, char *argv[])
 					char header[77];
 					sprintf(header, "[%s:%d] at %s", clientIP, clientPort, getTime());
 
-					sem_wait(&semaphore);
-
-					// Open the log file or create it if doesn't exist
-					int logFd = openLog(&serverConfig);
-					if (logFd == -1){
-						printf("Error opening/creating the Log file.\n");
-						return -1;
-					}
-
-					// Function to write on Log file
-					writeLog(logFd, header, buffer);
-
-					close(logFd);
-
-					sem_post(&semaphore);
+					accessLog(header, buffer, &serverConfig);
 
 					bzero(buffer, 2048);
 				} else if (n == 0){
 					char disconnectionMessage[128];
 					sprintf(disconnectionMessage, "Client [%s:%d] disconnected. ", clientIP, clientPort);
 
-					sem_wait(&semaphore);
-
-					// Open the log file or create it if doesn't exist
-					int logFd = openLog(&serverConfig);
-					if (logFd == -1){
-						printf("Error opening/creating the Log file.\n");
-						return -1;
-					}
-
-					// Function to write on Log file
-					writeLog(logFd, disconnectionMessage, NULL);
-
-					close(logFd);
-
-					sem_post(&semaphore);
+					accessLog(disconnectionMessage, NULL, &serverConfig);
 
 					bzero(buffer, 2048);
 					break;
@@ -168,8 +134,10 @@ int main(int argc, char *argv[])
 
 		    }
 
-			exit(0);
-		}else if(pid < 0){
+		    exit(EXIT_SUCCESS);
+		} else if(pid > 0){
+			fatherPid = getpid();
+		} else if(pid < 0){
 			printf("Error on fork.\n");
 		}
 
@@ -177,6 +145,43 @@ int main(int argc, char *argv[])
 	}
 	close(sockfd);
 	return 0;
+}
+
+// Handle CTRL+C
+void signalHandler(int signum) {
+    if (getpid() == fatherPid) {
+	    printf("Signal CTRL+C received, waiting for the connections to close...\n");
+
+	    while (waitpid(-1, NULL, 0) > 0);
+	    
+	    // Close the socket
+	    if (close(sockfd) < 0) {
+	        printf("Error closing socket.\n");
+	    }
+
+	    printf("Exiting...\n");
+
+	    exit(EXIT_SUCCESS);
+    }
+}
+
+// Access the log
+void accessLog(char *header, char *buffer, struct ServerConfiguration *serverConfig) {
+    sem_wait(&semaphore);
+
+    // Open the log file or create it if it doesn't exist
+    int logFd = openLog(serverConfig);
+    if (logFd == -1){
+        printf("Error opening/creating the Log file.\n");
+        return;
+    }
+
+    // Function to write on the log file
+    writeLog(logFd, header, buffer);
+
+    close(logFd);
+
+    sem_post(&semaphore);
 }
 
 // Reads and loads server configuration from inputs arguments
@@ -232,41 +237,6 @@ void defaultServerConfiguration(struct ServerConfiguration *config) {
     fclose(file);
     printf("Default server configuration loaded.\n");
 }
-
-// DEPRECATED!!
-void updateServerConfigurationOLD(struct ServerConfiguration *config){
-	char response[4];
-
-	while(1){
-		printf("Do you want to modify the default server configuration? (yes/no): ");	
-		scanf("%3s", response);
-
-		getchar();
-	
-		if (strcmp(response, "yes") == 0) {
-			// Change the directory of the Log file
-		    printf("Enter the directory where the Log file will be saved: ");
-		    scanf("%s", config->directory);
-		    
-		    printf("Enter the listening port of the server: ");
-		    scanf("%d", &config->port);
-	
-		    // Used to consume the new line character from the above scanf
-		    getchar();
-
-		    break;
-		} else if(strcmp(response, "no") == 0){
-			// Don't do anything
-			break;
-		} else {
-			printf("Please enter valid response. \n");
-		}
-	}
-	    printf("\n --- Server configuration --- \n");
-	    printf("Directory: %s \t Port: %d\n", config->directory, config->port);
-	    printf(" ---------------------------- \n\n");
-}
-
 
 // Handles all the logic about log files opening
 int openLog(struct ServerConfiguration *config){
