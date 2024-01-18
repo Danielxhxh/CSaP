@@ -1,6 +1,8 @@
-# Project in Computer Systems and Programming
+# Computer Systems and Programming Project
 
-#### Daniel Xhakalliu 2090065
+### Daniel Xhakalliu (Matriculation Number: 2090065)
+
+The project involves creating a log server capable of accommodating an unlimited number of clients through stateful connections. Every client's activity is recorded in a designated log file, with additional mechanisms in place for efficient log file management. It's worth noting that both bonus points outlined in the specifications have been implemented.
 
 This README.md serves as a guide, providing step-by-step instructions for the installation, compilation, and testing of the project developed by me.
 
@@ -18,19 +20,19 @@ This README.md serves as a guide, providing step-by-step instructions for the in
     └── clientConfiguration.txt
 ```
 
-- server.c: Source code file for the server.
-- client.c: Source code file for the client.
-- Makefile: Script for building and compiling the code.
-- README.md: Documentation file.
-- logs: Directory containing generated log files.
+- `server.c`: Source code file for the server.
+- `client.c`: Source code file for the client.
+- `Makefile`: Script for building and compiling the code.
+- `README.md`: Documentation file.
+- `logs`: Directory containing generated log files.
   - 'generated log files'
-- configurations:
-- serverConfiguration.txt: Server configuration file.
-- clientConfiguration.txt: Client configuration file.
+- `configurations`:
+  - `serverConfiguration.txt`: Server configuration file.
+  - `clientConfiguration.txt`: Client configuration file.
 
 ### 1. Installation
 
-Begin by extracting the contents of the `tar` file.
+Begin by extracting the contents of the `tar` or `zip` file.
 
 ### 2. Compilation
 
